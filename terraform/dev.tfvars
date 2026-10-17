@@ -1,0 +1,17 @@
+aws_region            = "us-east-1"
+environment           = "dev"
+project_name          = "nti-devops-dev"
+application_namespace = "nti-app"
+
+vpc_cidr             = "10.10.0.0/16"
+public_subnet_cidrs  = ["10.10.1.0/24", "10.10.3.0/24"]
+private_subnet_cidrs = ["10.10.11.0/24", "10.10.12.0/24"]
+availability_zones   = ["us-east-1a", "us-east-1b"]
+
+eks_version           = "1.36"
+eks_desired_size      = 1
+eks_min_size          = 1
+eks_max_size          = 2
+eks_instance_types    = ["t3.medium"]
+rds_instance_class    = "db.t3.micro"
+rds_allocated_storage = 20

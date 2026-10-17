@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nti-app
+description: NTI DevOps full-stack application
+version: 0.1.0
+appVersion: "1.0.0"
+type: application

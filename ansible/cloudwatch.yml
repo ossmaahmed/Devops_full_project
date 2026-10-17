@@ -1,0 +1,79 @@
+---
+- name: Install and configure CloudWatch Agent on EC2 instances
+  hosts: jenkins
+  become: true
+  tasks:
+    - name: Download CloudWatch agent package
+      get_url:
+        url: https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+        dest: /tmp/amazon-cloudwatch-agent.deb
+        mode: "0644"
+      when: ansible_os_family == 'Debian'
+
+    - name: Install CloudWatch agent
+      apt:
+        deb: /tmp/amazon-cloudwatch-agent.deb
+        state: present
+      when: ansible_os_family == 'Debian'
+
+    - name: Create CloudWatch config
+      copy:
+        dest: /opt/aws/amazon-cloudwatch-agent/bin/config.json
+        content: |
+          {
+            "logs": {
+              "logs_collected": {
+                "files": {
+                  "collect_list": [
+                    {
+                      "file_path": "/var/log/syslog",
+                      "log_group_name": "/var/log/syslog",
+                        "log_stream_name": "{instance_id}",
+                        "timezone": "UTC"
+                      },
+                      {
+                        "file_path": "/var/log/auth.log",
+                        "log_group_name": "/nti-devops/jenkins/auth",
+                        "log_stream_name": "{instance_id}",
+                        "timezone": "UTC"
+                    }
+                  ]
+                }
+              }
+            },
+            "metrics": {
+              "namespace": "NTI/EC2",
+              "append_dimensions": {
+                "InstanceId": "${aws:InstanceId}"
+              },
+              "metrics_collected": {
+                "cpu": {
+                  "measurement": [
+                    "cpu_usage_idle",
+                    "cpu_usage_iowait",
+                    "cpu_usage_user",
+                    "cpu_usage_system"
+                  ],
+                  "metrics_collection_interval": 60
+                },
+                "disk": {
+                  "measurement": ["used_percent"],
+                  "metrics_collection_interval": 60
+                },
+                "mem": {
+                  "measurement": ["mem_used_percent"],
+                  "metrics_collection_interval": 60
+                }
+              }
+            }
+          }
+
+    - name: Start CloudWatch agent
+      shell: |
+        /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+          -a fetch-config \
+          -m ec2 \
+          -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json \
+          -s
+      args:
+        executable: /bin/bash

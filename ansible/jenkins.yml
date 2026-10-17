@@ -1,0 +1,370 @@
+---
+- name: Install Jenkins and required tooling
+  hosts: jenkins
+  become: true
+  vars_prompt:
+    - name: jenkins_admin_username
+      prompt: Jenkins admin username
+      default: admin
+      private: false
+    - name: jenkins_admin_password
+      prompt: Jenkins admin password
+      private: true
+      confirm: true
+    - name: sonarqube_admin_current_password
+      prompt: Current SonarQube admin password (use admin for a new installation)
+      default: admin
+      private: true
+    - name: sonarqube_admin_new_password
+      prompt: New SonarQube admin password
+      private: true
+      confirm: true
+    - name: sonarqube_db_password
+      prompt: SonarQube PostgreSQL password
+      private: true
+      confirm: true
+  vars:
+    jenkins_plugins:
+      - blueocean
+      - docker-workflow
+      - kubernetes
+      - sonar
+      - git
+      - github-branch-source
+      - pipeline-aws
+      - configuration-as-code
+      - workflow-multibranch
+      - workflow-aggregator
+      - credentials-binding
+      - pipeline-utility-steps
+      - ws-cleanup
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: true
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - gnupg
+          - ca-certificates
+          - unzip
+          - software-properties-common
+          - apt-transport-https
+          - lsb-release
+        state: present
+
+    - name: Install Java 17
+      apt:
+        name: openjdk-17-jdk
+        state: present
+
+    - name: Add Jenkins repository key
+      shell: |
+        install -d -m 0755 /usr/share/keyrings
+        curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key -o /usr/share/keyrings/jenkins-keyring.asc
+        echo 'deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/' > /etc/apt/sources.list.d/jenkins.list
+      args:
+        executable: /bin/bash
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+        update_cache: true
+
+    - name: Create Docker keyring directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download Docker signing key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Configure Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        filename: docker
+        state: present
+        update_cache: true
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Add Jenkins and ubuntu users to docker group
+      user:
+        name: "{{ item }}"
+        groups: docker
+        append: true
+      loop:
+        - ubuntu
+        - jenkins
+      notify: Restart Jenkins
+
+    - name: Configure kernel settings required by SonarQube Elasticsearch
+      copy:
+        dest: /etc/sysctl.d/99-sonarqube.conf
+        content: |
+          vm.max_map_count=524288
+          fs.file-max=131072
+        mode: "0644"
+
+    - name: Apply SonarQube kernel settings
+      command: sysctl --system
+      changed_when: true
+
+    - name: Create SonarQube deployment directory
+      file:
+        path: /opt/sonarqube
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Validate SonarQube database password format
+      assert:
+        that:
+          - sonarqube_db_password is match('^[A-Za-z0-9_-]{16,}$')
+        fail_msg: Use at least 16 letters, digits, hyphens, or underscores for the SonarQube database password.
+
+    - name: Install SonarQube Compose configuration
+      template:
+        src: templates/sonarqube-compose.yml.j2
+        dest: /opt/sonarqube/compose.yml
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Start SonarQube and PostgreSQL
+      command: docker compose -f /opt/sonarqube/compose.yml up -d
+      register: sonarqube_compose
+      changed_when: "'Creating' in sonarqube_compose.stdout or 'Started' in sonarqube_compose.stdout or 'Recreated' in sonarqube_compose.stdout"
+
+    - name: Wait for SonarQube API
+      wait_for:
+        host: 127.0.0.1
+        port: 9000
+        delay: 15
+        timeout: 900
+
+    - name: Validate current SonarQube administrator password
+      uri:
+        url: http://127.0.0.1:9000/api/authentication/validate
+        method: GET
+        user: admin
+        password: "{{ sonarqube_admin_current_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+      register: sonarqube_auth
+      retries: 30
+      delay: 10
+      until: sonarqube_auth.json.valid | default(false) | bool
+      no_log: true
+
+    - name: Set SonarQube administrator password
+      uri:
+        url: http://127.0.0.1:9000/api/users/change_password
+        method: POST
+        user: admin
+        password: "{{ sonarqube_admin_current_password }}"
+        force_basic_auth: true
+        body_format: form-urlencoded
+        body:
+          login: admin
+          previousPassword: "{{ sonarqube_admin_current_password }}"
+          password: "{{ sonarqube_admin_new_password }}"
+        status_code: 204
+      when: sonarqube_admin_current_password != sonarqube_admin_new_password
+      no_log: true
+
+    - name: Remove previous Jenkins SonarQube token
+      uri:
+        url: http://127.0.0.1:9000/api/user_tokens/revoke
+        method: POST
+        user: admin
+        password: "{{ sonarqube_admin_new_password }}"
+        force_basic_auth: true
+        body_format: form-urlencoded
+        body:
+          name: nti-jenkins
+        status_code: [200, 400]
+      failed_when: false
+      no_log: true
+
+    - name: Generate Jenkins SonarQube token
+      uri:
+        url: http://127.0.0.1:9000/api/user_tokens/generate
+        method: POST
+        user: admin
+        password: "{{ sonarqube_admin_new_password }}"
+        force_basic_auth: true
+        body_format: form-urlencoded
+        body:
+          name: nti-jenkins
+        status_code: 200
+      register: sonarqube_token_result
+      no_log: true
+
+    - name: Remove previous Jenkins quality-gate webhook
+      uri:
+        url: http://127.0.0.1:9000/api/webhooks/delete
+        method: POST
+        user: admin
+        password: "{{ sonarqube_admin_new_password }}"
+        force_basic_auth: true
+        body_format: form-urlencoded
+        body:
+          name: nti-jenkins-quality-gate
+        status_code: [200, 204, 404]
+      failed_when: false
+      no_log: true
+
+    - name: Create Jenkins quality-gate webhook
+      uri:
+        url: http://127.0.0.1:9000/api/webhooks/create
+        method: POST
+        user: admin
+        password: "{{ sonarqube_admin_new_password }}"
+        force_basic_auth: true
+        body_format: form-urlencoded
+        body:
+          name: nti-jenkins-quality-gate
+          url: http://host.docker.internal:8080/sonarqube-webhook/
+        status_code: [200, 204]
+      no_log: true
+
+    - name: Install Jenkins Configuration as Code
+      template:
+        src: templates/jenkins.yaml.j2
+        dest: /var/lib/jenkins/jenkins.yaml
+        owner: jenkins
+        group: jenkins
+        mode: "0600"
+      vars:
+        sonarqube_jenkins_token: "{{ sonarqube_token_result.json.token }}"
+      no_log: true
+
+    - name: Create Jenkins systemd override directory
+      file:
+        path: /etc/systemd/system/jenkins.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure Jenkins to load JCasC
+      copy:
+        dest: /etc/systemd/system/jenkins.service.d/override.conf
+        content: |
+          [Service]
+          Environment="CASC_JENKINS_CONFIG=/var/lib/jenkins/jenkins.yaml"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Jenkins
+
+    - name: Install Trivy
+      shell: |
+        curl -sfL https://raw.githubusercontent.com/aquase/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.50.2
+      args:
+        executable: /bin/bash
+
+    - name: Install Helm
+      shell: |
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        executable: /bin/bash
+
+    - name: Install kubectl
+      shell: |
+        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+      args:
+        executable: /bin/bash
+
+    - name: Download Sonar Scanner
+      get_url:
+        url: https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
+        dest: /tmp/sonar-scanner.zip
+        mode: "0644"
+
+    - name: Install Sonar Scanner
+      unarchive:
+        src: /tmp/sonar-scanner.zip
+        dest: /opt
+        remote_src: true
+        creates: /opt/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner
+
+    - name: Add Sonar Scanner to PATH
+      file:
+        src: /opt/sonar-scanner-6.2.1.4610-linux-x64/bin/sonar-scanner
+        dest: /usr/local/bin/sonar-scanner
+        state: link
+
+    - name: Install AWS CLI v2
+      shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+        unzip -q /tmp/awscliv2.zip -d /tmp
+        /tmp/aws/install
+      args:
+        executable: /bin/bash
+
+    - name: Write Jenkins plugin list
+      copy:
+        dest: /tmp/jenkins-plugins.txt
+        content: "{{ jenkins_plugins | join('\n') }}\n"
+        mode: "0644"
+
+    - name: Stop Jenkins before installing plugins
+      systemd:
+        name: jenkins
+        state: stopped
+
+    - name: Install Jenkins plugins
+      command: jenkins-plugin-cli --plugin-file /tmp/jenkins-plugins.txt
+      environment:
+        JENKINS_HOME: /var/lib/jenkins
+      register: plugin_install
+      changed_when: "'Downloaded' in plugin_install.stdout or 'Installing' in plugin_install.stdout"
+
+    - name: Start and enable Jenkins
+      systemd:
+        name: jenkins
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Wait for Jenkins after JCasC configuration
+      wait_for:
+        host: 127.0.0.1
+        port: 8080
+        delay: 5
+        timeout: 300
+
+  handlers:
+    - name: Restart Jenkins
+      systemd:
+        name: jenkins
+        state: restarted
+        daemon_reload: true

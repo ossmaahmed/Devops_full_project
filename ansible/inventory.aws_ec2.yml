@@ -1,0 +1,15 @@
+plugin: amazon.aws.aws_ec2
+regions:
+  - "{{ lookup('env', 'AWS_REGION') | default('us-east-1', true) }}"
+filters:
+  instance-state-name: running
+  tag:Project: nti-devops
+hostnames:
+  - tag:Name
+compose:
+  ansible_host: public_ip_address
+  ansible_user: "'ubuntu'"
+  ansible_ssh_private_key_file: lookup('env', 'JENKINS_SSH_KEY')
+groups:
+  jenkins: tags.Name == 'nti-devops-jenkins'
+  all_ec2: true

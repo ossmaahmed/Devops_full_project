@@ -1,0 +1,41 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nti-pod-resource-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: nti.pod.resources
+      rules:
+        - alert: PodCpuUsageAbove80Percent
+          expr: |
+            sum by (namespace, pod) (
+              rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m])
+            )
+            /
+            sum by (namespace, pod) (
+              kube_pod_container_resource_limits{resource="cpu",unit="core"}
+            ) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod CPU usage is above 80%"
+            description: "{{ $labels.namespace }}/{{ $labels.pod }} CPU usage exceeded 80% of its limit for 5 minutes."
+        - alert: PodMemoryUsageAbove80Percent
+          expr: |
+            sum by (namespace, pod) (
+              container_memory_working_set_bytes{container!="",container!="POD"}
+            )
+            /
+            sum by (namespace, pod) (
+              kube_pod_container_resource_limits{resource="memory",unit="byte"}
+            ) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod memory usage is above 80%"
+            description: "{{ $labels.namespace }}/{{ $labels.pod }} memory usage exceeded 80% of its limit for 5 minutes."

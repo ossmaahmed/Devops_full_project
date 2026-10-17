@@ -1,0 +1,32 @@
+jenkins:
+  systemMessage: "NTI DevOps Jenkins managed by Ansible JCasC"
+  numExecutors: 2
+  mode: NORMAL
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "{{ jenkins_admin_username }}"
+          password: {{ jenkins_admin_password | to_json }}
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  location:
+    url: {{ ("http://" ~ ansible_host ~ ":8080/") | to_json }}
+    adminAddress: "devops@example.invalid"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "sonarqube-token"
+              secret: {{ sonarqube_jenkins_token | to_json }}
+
+unclassified:
+  sonarGlobalConfiguration:
+    installations:
+      - name: "SonarQube"
+        serverUrl: "http://127.0.0.1:9000"
+        credentialsId: "sonarqube-token"

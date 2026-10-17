@@ -1,0 +1,21 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+**/terraform.tfstate.d/
+*.tfplan
+terraform.tfvars
+terraform/backend.tf
+terraform/backend.hcl
+terraform/addons/backend.tf
+terraform/addons/backend.hcl
+ansible/inventory.ini
+ansible/group_vars/**/vault.yml
+
+# Application and local secrets
+**/node_modules/
+.env
+.env.*
+!.env.example
+build.env
+k8s/secrets/secrets.yaml

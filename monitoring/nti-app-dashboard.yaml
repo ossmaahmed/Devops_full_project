@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nti-app-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  nti-app-overview.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []},
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "title": "CPU by pod (nti-app)",
+          "type": "timeseries",
+          "targets": [{"expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"nti-app\",container!=\"\",container!=\"POD\"}[5m]))", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "title": "Memory by pod (nti-app)",
+          "type": "timeseries",
+          "targets": [{"expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"nti-app\",container!=\"\",container!=\"POD\"})", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 9},
+          "id": 3,
+          "title": "CPU limit utilization by pod (nti-app)",
+          "type": "timeseries",
+          "targets": [{"expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"nti-app\",container!=\"\",container!=\"POD\"}[5m])) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"nti-app\",resource=\"cpu\",unit=\"core\"})", "refId": "A"}]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": ["nti", "kubernetes"],
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "NTI Application",
+      "uid": "nti-app-overview",
+      "version": 1
+    }

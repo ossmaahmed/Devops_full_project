@@ -1,0 +1,50 @@
+replicaCount: 2
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/nti-devops-app
+  backendTag: backend-latest
+  frontendTag: frontend-latest
+  pullPolicy: IfNotPresent
+
+service:
+  frontendType: NodePort
+  frontendPort: 80
+  frontendNodePort: 30080
+  backendPort: 3000
+
+resources:
+  backend:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  frontend:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  cpuUtilization: 70
+
+databaseSecretName: app-db
+
+externalSecrets:
+  enabled: true
+  storeName: aws-secrets-manager
+  region: us-east-1
+  secretId: nti-devops/rds/password
+
+networkPolicy:
+  enabled: true
+  vpcCidr: 10.0.0.0/16
+  rdsCidrs:
+    - 10.0.11.0/24
+    - 10.0.12.0/24
