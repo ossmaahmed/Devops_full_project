@@ -4,7 +4,7 @@ Module-based AWS infrastructure and an example full-stack application. The core 
 
 ## Project map
 
-- `terraform/`: VPC, configurable EKS managed node group, RDS + Secrets Manager, Jenkins EC2, daily AWS Backup, ECR, and an internet-facing ALB with access logs in S3. Environment-specific settings are in `dev.tfvars` and `stage.tfvars`.
+- `terraform/`: VPC, configurable EKS managed node group, RDS + Secrets Manager, Jenkins EC2, daily AWS Backup, ECR, and an internet-facing ALB with access logs in S3. Each Git branch contains only its matching Terraform variables file: `main.tfvars`, `dev.tfvars`, `stage.tfvars`, or `prod.tfvars`.
 - `ansible/`: Jenkins tools/plugins and CloudWatch Agent for EC2 instances in its inventory.
 - `app/`: HTML/JS frontend, Express API, MySQL local database, Dockerfiles, Compose, and the Helm chart used by the pipeline.
 - `k8s/`: standalone, component-grouped YAML manifests with ConfigMaps and a gitignored local Secret file; the pipeline deploys the Helm chart in `app/helm/nti-app`.
@@ -37,7 +37,7 @@ terraform plan -var-file="dev.tfvars" -var="key_name=YOUR_EC2_KEY_PAIR" -var="je
 terraform apply -var-file="dev.tfvars" -var="key_name=YOUR_EC2_KEY_PAIR" -var="jenkins_access_cidr=YOUR_PUBLIC_IP/32"
 ```
 
-Create the `stage` workspace once with `terraform workspace new stage`, then select it before planning or applying `stage.tfvars`. Keep each environment in its own workspace/state; the existing default workspace and production configuration are not changed by these examples. If resources already exist in the default workspace, review and migrate state deliberately before creating another copy. The environment files use distinct resource prefixes and VPC ranges, and the EKS/RDS sizing is passed to modules through Terraform variables.
+The `main`, `dev`, `stage`, and `prod` branches each contain only the correspondingly named `.tfvars` file. Select the matching Terraform workspace and use that branch's file when planning or applying. Keep each environment in its own workspace/state; if resources already exist in the `default` workspace, review and migrate state deliberately before creating another copy. The environment files use distinct resource prefixes and VPC ranges, and EKS/RDS sizing is passed to modules through Terraform variables.
 
 Terraform creates billable AWS resources. Review the plan, particularly NAT gateways, EKS nodes, RDS, and Jenkins EC2, before applying. Keep Terraform state private because it contains generated database credentials.
 
@@ -55,8 +55,8 @@ This implementation uses a Terraform-managed ALB directly attached to the EKS no
 2. The Jenkins play prompts for the Jenkins admin password, current/new SonarQube admin passwords, and the SonarQube database password. For a fresh SonarQube install, the current password is `admin`; choose and securely retain the new value for future playbook runs.
 3. Jenkins JCasC configures the SonarQube server named `SonarQube`, creates the token credential, and registers the quality-gate webhook. SonarQube listens on EC2 loopback at port 9000, not on the public interface.
 4. Create a GitHub multibranch Pipeline pointing to this repository and set its branch indexing interval to one minute. Jenkins is intentionally reachable only from `jenkins_access_cidr`, so a public GitHub webhook cannot reach it unless you separately allow GitHub's published webhook IP ranges.
-5. Create the `dev`, `stage`, and `prod` branches in GitHub. Multibranch Pipeline discovers branch jobs from Git; the Jenkinsfile reads `BRANCH_NAME` at runtime, so environment values are not embedded in the pipeline. Build and security scans run on branches and pull requests. A branch deploys only when it is listed in `pipeline_environments`; other branches are build/scan-only.
-6. Provision the target deployment role in each environment first, then configure `pipeline_environments` in the untracked `terraform/terraform.tfvars` file and apply the root Terraform configuration (include `-var-file=dev.tfvars` as in the commands above). This creates the non-secret Systems Manager Parameter Store entries Jenkins reads for the selected branch:
+5. Multibranch Pipeline discovers branch jobs from Git; the Jenkinsfile reads `BRANCH_NAME` at runtime, so environment values are not embedded in the pipeline. Build and security scans run on branches and pull requests. App deployment occurs only for branches listed in `pipeline_environments`; `main` is build/scan-only unless it is explicitly configured there.
+6. Provision the target deployment role in each app deployment environment first, then configure `pipeline_environments` in the untracked `terraform/terraform.tfvars` file and apply the root Terraform configuration using the matching branch's `.tfvars` file (for example, `-var-file=dev.tfvars`). This creates the non-secret Systems Manager Parameter Store entries Jenkins reads for the selected branch:
 
    ```hcl
    pipeline_environments = {
