@@ -111,7 +111,13 @@ variable "eks_max_size" {
 variable "eks_instance_types" {
   description = "EC2 instance types for the EKS managed node group"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.micro"]
+}
+
+variable "jenkins_instance_type" {
+  description = "EC2 instance type for Jenkins"
+  type        = string
+  default     = "t3.micro"
 }
 
 variable "db_name" {
@@ -136,6 +142,17 @@ variable "rds_allocated_storage" {
   default     = 20
 }
 
+variable "rds_backup_retention_period" {
+  description = "RDS automated backup retention in days; 0 disables automated backups"
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.rds_backup_retention_period == 0 || (var.rds_backup_retention_period >= 1 && var.rds_backup_retention_period <= 35)
+    error_message = "rds_backup_retention_period must be 0 or between 1 and 35 days."
+  }
+}
+
 variable "jenkins_ami" {
   description = "Optional Ubuntu AMI override; defaults to the latest Ubuntu 22.04 image in the selected region."
   type        = string
@@ -143,8 +160,8 @@ variable "jenkins_ami" {
 }
 
 variable "key_name" {
-  type    = string
-  default = "nti-key"
+  description = "Name of an existing EC2 key pair in aws_region"
+  type        = string
 }
 
 variable "eks_version" {
