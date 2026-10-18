@@ -25,7 +25,7 @@ Open `http://localhost`. The API health endpoint is `http://localhost:3001/api/h
 ## AWS infrastructure
 
 1. Configure AWS credentials and create an EC2 key pair in the target region.
-2. Set `key_name` and `jenkins_access_cidr` in Terraform variables. The default access CIDR is localhost only; set it to your trusted public IP in `/32` form to reach Jenkins. Jenkins uses a dynamically selected Ubuntu 22.04 AMI, and the EKS default is Kubernetes `1.36` with Amazon Linux 2023 nodes.
+2. Generate a local SSH key pair with `ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\nti-devops-jenkins" -C "nti-devops-jenkins"`. Terraform registers the `.pub` key in AWS; the private key stays local and is not stored in Terraform state. Set a unique `key_name` and `jenkins_access_cidr` when planning. The default access CIDR is localhost only; set it to your trusted public IP in `/32` form to reach Jenkins. Jenkins uses a dynamically selected Ubuntu 22.04 AMI, and the EKS default is Kubernetes `1.36` with Amazon Linux 2023 nodes.
 3. Run:
 
 ```powershell
