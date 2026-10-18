@@ -122,9 +122,7 @@ resource "aws_eks_addon" "vpc_cni" {
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "PRESERVE"
   configuration_values = jsonencode({
-    env = {
-      ENABLE_NETWORK_POLICY = "true"
-    }
+    enableNetworkPolicy = true
   })
 
   depends_on = [aws_iam_role_policy_attachment.eks_cni_policy]
