@@ -41,6 +41,10 @@ The `main`, `dev`, `stage`, and `prod` branches each contain only the correspond
 
 Terraform creates billable AWS resources. Review the plan, particularly NAT gateways, EKS nodes, RDS, and Jenkins EC2, before applying. Keep Terraform state private because it contains generated database credentials.
 
+The EC2 `t3.micro` defaults may qualify for an account's Free Tier, but eligibility varies by account and region. EKS control-plane time, NAT gateways, load balancers, and other resources in this stack can still incur charges. RDS automated backups default to disabled (`rds_backup_retention_period = 0`) to satisfy Free Tier account limits; set a supported retention period if your account permits it.
+
+When recovering a failed apply, keep using the same variable inputs that created the current workspace state. Review the plan before switching to a branch-specific `.tfvars` file: changing project names or CIDRs can replace the VPC and dependent resources.
+
 For remote state, do this before initializing the core configuration: run `terraform -chdir=terraform/bootstrap init` and `terraform -chdir=terraform/bootstrap apply -var="state_bucket_name=YOUR_GLOBALLY_UNIQUE_BUCKET"`. Copy `terraform/backend.tf.example` to `terraform/backend.tf` and `terraform/backend.hcl.example` to `terraform/backend.hcl`, then set the bucket output in the HCL file. Initialize with `terraform -chdir=terraform init -backend-config=backend.hcl` (use `-migrate-state` if migrating an existing local workspace). For addons, copy the corresponding backend examples from `terraform/addons/` and use its separate state key. The local backend files are gitignored.
 
 After the core apply creates the EKS cluster and OIDC provider, run `./terraform/apply-addons.ps1` from PowerShell. It reads the required values from core Terraform outputs and uses the matching addons workspace, so dev/stage addon state remains isolated, then installs External Secrets Operator plus the application namespace in a second Terraform pass, after the API server exists.

@@ -15,6 +15,10 @@ data "aws_ami" "jenkins_ubuntu" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_key_pair" "jenkins" {
+  key_name = var.key_name
+}
+
 module "network" {
   source = "./modules/network"
 
@@ -45,14 +49,15 @@ module "eks" {
 module "rds" {
   source = "./modules/rds"
 
-  project_name      = var.project_name
-  db_name           = var.db_name
-  db_username       = var.db_username
-  subnet_ids        = module.network.private_subnet_ids
-  vpc_id            = module.network.vpc_id
-  allowed_cidr      = var.vpc_cidr
-  instance_class    = var.rds_instance_class
-  allocated_storage = var.rds_allocated_storage
+  project_name            = var.project_name
+  db_name                 = var.db_name
+  db_username             = var.db_username
+  subnet_ids              = module.network.private_subnet_ids
+  vpc_id                  = module.network.vpc_id
+  allowed_cidr            = var.vpc_cidr
+  instance_class          = var.rds_instance_class
+  allocated_storage       = var.rds_allocated_storage
+  backup_retention_period = var.rds_backup_retention_period
 }
 
 module "jenkins" {
@@ -65,7 +70,8 @@ module "jenkins" {
   vpc_id               = module.network.vpc_id
   subnet_id            = module.network.public_subnet_ids[0]
   ami_id               = var.jenkins_ami != "" ? var.jenkins_ami : data.aws_ami.jenkins_ubuntu.id
-  key_name             = var.key_name
+  instance_type        = var.jenkins_instance_type
+  key_name             = data.aws_key_pair.jenkins.key_name
   access_cidr          = var.jenkins_access_cidr
 }
 
