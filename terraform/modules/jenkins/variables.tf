@@ -16,7 +16,7 @@ variable "ami_id" {
 
 variable "instance_type" {
   type    = string
-  default = "t3.medium"
+  default = "t3.micro"
 }
 
 variable "key_name" {
