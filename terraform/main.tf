@@ -15,8 +15,14 @@ data "aws_ami" "jenkins_ubuntu" {
 
 data "aws_caller_identity" "current" {}
 
-data "aws_key_pair" "jenkins" {
-  key_name = var.key_name
+resource "aws_key_pair" "jenkins" {
+  key_name   = var.key_name
+  public_key = file(pathexpand(var.jenkins_public_key_path))
+
+  tags = {
+    Name    = var.key_name
+    Project = var.project_name
+  }
 }
 
 module "network" {
@@ -71,7 +77,7 @@ module "jenkins" {
   subnet_id            = module.network.public_subnet_ids[0]
   ami_id               = var.jenkins_ami != "" ? var.jenkins_ami : data.aws_ami.jenkins_ubuntu.id
   instance_type        = var.jenkins_instance_type
-  key_name             = data.aws_key_pair.jenkins.key_name
+  key_name             = aws_key_pair.jenkins.key_name
   access_cidr          = var.jenkins_access_cidr
 }
 

@@ -160,8 +160,14 @@ variable "jenkins_ami" {
 }
 
 variable "key_name" {
-  description = "Name of an existing EC2 key pair in aws_region"
+  description = "Name to assign to the Jenkins EC2 key pair in aws_region"
   type        = string
+}
+
+variable "jenkins_public_key_path" {
+  description = "Path to the local public key Terraform registers for Jenkins"
+  type        = string
+  default     = "~/.ssh/nti-devops-jenkins.pub"
 }
 
 variable "eks_version" {
